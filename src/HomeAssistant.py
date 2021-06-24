@@ -2,6 +2,7 @@ from src.Member import Member
 from src.Note import Note
 import pickle
 import os
+import pyttsx3
 
 class HomeAssistant:
     def __init__(self):
@@ -9,7 +10,7 @@ class HomeAssistant:
         self.members = []
         self.notes = []
         self.loadMembers()
-
+        self.voice = pyttsx3.init()
 
     def start(self):
         # start camera:Gabriel
@@ -20,32 +21,37 @@ class HomeAssistant:
                 if member == None:
                     self.registerMember()
                 else:
-                    print(f"Hello, {member.name}")
+                    self.say(f"Hello, {member.name}")
                     notes = self.getNotesTo(member)
                     if len(notes) == 0:
-                        print(f"There are no notes left for you")
+                        self.say(f"There are no notes left for you")
                     else:
-                        answer = input(f"I have found {len(notes)} notes for you, do you want to hear them? ")
+                        self.say(f"I have found {len(notes)} notes for you, do you want to hear them? ")
+                        answer = input(f"Write here")
                         if answer == "yes":
                             for note in notes:
-                                print(f"Note from {note.sender.name}:\n{note.content}")
+                                self.say(f"Note from {note.sender.name}:\n{note.content}")
                                 self.removeNote(note)
-
-                    answer = input(f"By the way do you want to leave any note? ")
+                    self.say(f"By the way do you want to leave any note? ")
+                    answer = input(f"Write here ")
                     if answer == "yes":
-                        to_who = input(f"Who is the recipient of your note? ")
+                        self.say(f"Who is the recipient of your note? ")
+                        to_who = input(f"Write here ")
                         recipient = self.searchMemberNamed(to_who)
                         if recipient == None:
-                            print(f"Sorry I couldn't find any member named {to_who}")
+                            self.say(f"Sorry I couldn't find any member named {to_who}")
                         else:
-                            content = input(f"What do you want to say to {recipient.name}?")
+                            self.say(f"What do you want to say to {recipient.name}?")
+                            content = input(f"Write here ")
                             self.addNote(member, recipient, content)
 
                     if len(self.getNotesFrom(member)) > 0:
-                        answer = input(f"Do you want to edit any note?")
+                        self.say(f"Do you want to edit any note?")
+                        answer = input(f"Write here ")
                         if answer == "yes":
                             self.noteInteraction("edit", member)
-                        answer = input(f"Do you want to remove any note?")
+                        self.say(f"Do you want to remove any note?")
+                        answer = input(f"Write here ")
                         if answer == "yes":
                             self.noteInteraction("remove", member)
 
@@ -57,11 +63,13 @@ class HomeAssistant:
     '''Members'''
     def recognizeMember(self):
         # Gabriel
-        name = input(f"Authentication\nWhat is your name? ")
+        self.say(f"Authentication\nWhat is your name? ")
+        name = input("Write here ")
         return self.searchMemberNamed(name)
 
     def registerMember(self):
-        name = input(f"Registration\nWhat is your name? ")
+        self.say(f"Registration\nWhat is your name? ")
+        name = input("Write here ")
         # Gabriel: take pictures
         pictures = None
         newMember = Member(name, pictures)
@@ -125,12 +133,16 @@ class HomeAssistant:
         self.storeNotes()
 
     def editNote(self, edit_note):
-        answer = input("do you want to change the content ")
+        self.say("Do you want to change the content? ")
+        answer = input("Write here ")
         if answer == "yes":
-            edit_note.content = input("Write the new content ")
-        answer = input("do you want to change the recipient ")
+            self.say("Write the new content ")
+            edit_note.content = input("Write here ")
+        self.say("Do you want to change the recipient ")
+        answer = input("Write here ")
         if answer == "yes":
-            to_who = input("Tell me the name of the new recipient ")
+            self.say("Tell me the name of the new recipient ")
+            to_who = input("Write here ")
             recipient = self.searchMemberNamed(to_who)
             edit_note.recipient = recipient
         self.storeNotes()
@@ -167,14 +179,15 @@ class HomeAssistant:
 
     def noteInteraction(self, type, member):
         assert type == "edit" or type == "remove"
-        to_who = input(f"Which member is the recipient? ")
+        self.say(f"Which member is the recipient? ")
+        to_who = input("Write here ")
         # check to_who is a member
         recipient = self.searchMemberNamed(to_who)
         if recipient == None:
-            print(f"Sorry I couldn't find any member with such name")
+            self.say(f"Sorry I couldn't find any member with such name")
         else:
             notes_to_who = self.getNotesFromTo(member, recipient)
-            print(f"I have found {len(notes_to_who)} from you to {recipient.name}")
+            self.say(f"I have found {len(notes_to_who)} from you to {recipient.name}")
             if len(notes_to_who) == 0:
                 print("ERROR: there are no notes!! ")
                 return
@@ -185,11 +198,19 @@ class HomeAssistant:
                 else:
                     self.removeNote(notes_to_who[0])
             else:
-                words = input(f"You need to be more specific. Try typing some words in the note\n")
+                self.say(f"You need to be more specific. Try typing some words in the note\n")
+                words = input("Write here ")
                 most_prob_note = self.getMostProbableNote(notes_to_who, words.split())
-                answer = input(f"Do you want to edit this note? \"{most_prob_note.content}\"")
+                self.say(f"Do you want to edit this note? \"{most_prob_note.content}\"")
+                answer = input("Write here ")
                 if answer == "yes":
                     if type == "edit":
                         self.editNote(most_prob_note)
                     else:
                         self.removeNote(most_prob_note)
+
+
+    def say(self, text):
+        print(text)
+        self.voice.say(text)
+        self.voice.runAndWait()
