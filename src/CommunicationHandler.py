@@ -1,6 +1,8 @@
 import pyttsx3
 import speech_recognition as sr
 import sys
+
+
 class CommunicationHandler:
     def __init__(self, blind, deaf, dumb):
         self.voice = pyttsx3.init()

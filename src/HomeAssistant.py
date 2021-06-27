@@ -1,150 +1,174 @@
 from src.Member import Member
 from src.Note import Note
 from src.CommunicationHandler import CommunicationHandler
+import cv2
+import face_recognition
 import pickle
 import os
+
 
 class HomeAssistant:
     def __init__(self, blind=False, deaf=False, dumb=False):
         # load data from db
         self.members = []
         self.notes = []
-        self.loadMembers()
+        self.load_members()
         self.communicator = CommunicationHandler(blind, deaf, dumb)
 
     def start(self):
-        # start camera:Gabriel
+        # start onboard webcam
+        video_capture = cv2.VideoCapture(0)
         while True:
-            if self.detectPresence():
-                member = self.recognizeMember()
-                if member == None:
-                    self.nonMemberInteraction()
+            # capture next frame and detect eventual face/s
+            _, frame = video_capture.read()
+            faces = self.detect_presence(frame)
+            if faces is not None:
+                # for (x, y, w, h) in faces:
+                #     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 1)
+                # cv2.imshow("Video", frame)
+                # cv2.waitKey(42)
+                member = self.recognize_member(frame, faces)
+                if member is None:
+                    self.non_member_interaction()
                 else:
-                    self.memberInteraction(member)
+                    self.member_interaction(member)
 
     '''Interactions'''
-    def nonMemberInteraction(self):
-        self.communicator.say("Seems your not part of this Clan, do you want to register?")
+
+    def non_member_interaction(self):
+        self.communicator.say("Seems you are not part of this Clan, do you want to register?")
         answer = self.communicator.listen()
         if "yes" in answer.split():
-            self.registerMember()
+            self.register_member()
 
-    def memberInteraction(self, member):
+    def member_interaction(self, member):
         while True:
             self.communicator.say(f"Hello, {member.name[0].capitalize() + member.name[1:]}")
-            if not self.isMemberStillHere(member): break
-            notes = self.getNotesTo(member)
+            if not self.is_member_still_here(member):
+                break
+            notes = self.get_notes_to(member)
             if len(notes) == 0:
                 self.communicator.say(f"There are no notes left for you")
             else:
-                self.communicator.say(f"I have found {len(notes)} notes for you, do you want to hear them? ")
+                self.communicator.say(f"I have found {len(notes)} notes for you, do you want to hear them?")
                 answer = self.communicator.listen()
-                if "yes" in answer.split(): self.tellNotes(notes)
+                if "yes" in answer.split():
+                    self.tell_notes(notes)
             self.communicator.say(f"What can I do for you, {member.name[0].capitalize() + member.name[1:]}?")
             answer = self.communicator.listen()
-            action = self.getMostProbableAction(answer)
+            action = self.get_most_probable_action(answer)
             self.communicator.say(f"So, do you want to {action} a note?")
             answer = self.communicator.listen()
             if "yes" in answer:
                 if action == "leave":
-                    self.leaveNoteInteraction(member)
+                    self.leave_note_interaction(member)
                 else:
-                    self.noteInteraction(action, member)
+                    self.note_interaction(action, member)
 
-    def leaveNoteInteraction(self, member):
+    def leave_note_interaction(self, member):
         self.communicator.say(f"Who is the recipient of your note? ")
         to_who = self.communicator.listen()
-        recipient = self.searchMemberNamed(to_who)
-        if recipient == None:
+        recipient = self.search_member_named(to_who)
+        if recipient is None:
             self.communicator.say(f"Sorry I couldn't find any member named {to_who}")
         else:
             self.communicator.say(f"What do you want to say to {recipient.name}?")
             content = self.communicator.listen()
-            self.addNote(member, recipient, content)
+            self.add_note(member, recipient, content)
 
-    def noteInteraction(self, type, member):
-        assert type == "edit" or type == "remove"
+    def note_interaction(self, mode, member):
+        assert mode == "edit" or mode == "remove"
         self.communicator.say(f"Which member is the recipient? ")
         to_who = self.communicator.listen()
         # check to_who is a member
-        recipient = self.searchMemberNamed(to_who)
-        if recipient == None:
+        recipient = self.search_member_named(to_who)
+        if recipient is None:
             self.communicator.say(f"Sorry I couldn't find any member with such name")
         else:
-            notes_to_who = self.getNotesFromTo(member, recipient)
+            notes_to_who = self.get_notes_from_to(member, recipient)
             self.communicator.say(f"I have found {len(notes_to_who)} from you to {recipient.name}")
             if len(notes_to_who) == 0:
                 print("ERROR: there are no notes!! ")
                 return
             if len(notes_to_who) == 1:
                 # there is just one note
-                if type == "edit":
-                    self.editNote(notes_to_who[0])
+                if mode == "edit":
+                    self.edit_note(notes_to_who[0])
                 else:
-                    self.removeNote(notes_to_who[0])
+                    self.remove_note(notes_to_who[0])
             else:
                 self.communicator.say(f"You need to be more specific. Try typing some words in the note\n")
                 words = self.communicator.listen()
-                most_prob_note = self.getMostProbableNote(notes_to_who, words.split())
+                most_prob_note = self.get_most_probable_note(notes_to_who, words.split())
                 self.communicator.say(f"Do you want to edit this note? \"{most_prob_note.content}\"")
                 answer = self.communicator.listen()
                 if answer == "yes":
-                    if type == "edit":
-                        self.editNote(most_prob_note)
+                    if mode == "edit":
+                        self.edit_note(most_prob_note)
                     else:
-                        self.removeNote(most_prob_note)
-    def tellNotes(self, notes):
+                        self.remove_note(most_prob_note)
+
+    def tell_notes(self, notes):
         for note in notes:
             self.communicator.say(f"Note from {note.sender.name}:\n{note.content}")
-            self.removeNote(note)
+            self.remove_note(note)
 
-    def detectPresence(self):
-        # Gabriel
-        return True
+    def detect_presence(self, frame):
+        # load and instantiate haar cascade classifier
+        face_cascade = cv2.CascadeClassifier(os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
+        # convert input frame to grayscale
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray)
+        # detect faces
+        faces = face_cascade.detectMultiScale(gray, minNeighbors=5, minSize=(60, 60), flags=cv2.CASCADE_SCALE_IMAGE)
+        return faces
 
-    def isMemberStillHere(self, member):
-        return self.detectPresence() #and (self.recognizeMember() == member)
+    def is_member_still_here(self, member):
+        return self.detect_presence()  # and (self.recognizeMember() == member)
 
     '''Members'''
 
-    def recognizeMember(self):
-        # Gabriel
+    def recognize_member(self, frame, faces):
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        encodings = face_recognition.face_encodings(rgb)
+        print(encodings)
         self.communicator.say(f"Authentication\nWhat is your name? ")
         name = self.communicator.listen()
-        return self.searchMemberNamed(name)
+        return self.search_member_named(name)
 
-    def registerMember(self):
+    def register_member(self):
         self.communicator.say(f"Registration\nWhat is your name? ")
         name = self.communicator.listen()
         # Gabriel: take pictures
         pictures = None
         newMember = Member(name.lower(), pictures)
         self.members.append(newMember)
-        self.storeMembers()
+        self.store_members()
         self.communicator.say("Registration completed")
 
-    def storeMembers(self):
+    def store_members(self):
         members_dict = {}
         for member in self.members:
             members_dict[member.name] = member.pictures
         pickle.dump(members_dict, open("../data/members.p", "wb"))
 
-    def loadMembers(self):
+    def load_members(self):
         self.members = []
         if os.path.getsize("../data/members.p") > 0:
             members_dict = pickle.load(open("../data/members.p", "rb"))
             for name in members_dict:
                 self.members += [Member(name, members_dict[name])]
-        self.loadNotes()
+        self.load_notes()
 
-    def searchMemberNamed(self, name):
+    def search_member_named(self, name):
         for member in self.members:
             if member.name == name:
                 return member
         return None
 
     '''Notes'''
-    def storeNotes(self):
+
+    def store_notes(self):
         # esempio: {"Antonio": [NoteObj, NoteObj],, "Fabio": [NoteObj, NoteObj]}
         notes_dict = {}
         for note in self.notes:
@@ -155,7 +179,7 @@ class HomeAssistant:
 
         pickle.dump(notes_dict, open("../data/notes.p", "wb"))
 
-    def loadNotes(self):
+    def load_notes(self):
         self.notes = []
         if os.path.getsize("../data/notes.p") > 0:
             notes_dict = pickle.load(open("../data/notes.p", "rb"))
@@ -163,18 +187,18 @@ class HomeAssistant:
                 if member.name in notes_dict.keys():
                     notes_to_member = notes_dict[member.name]
                     for note in notes_to_member:
-                        self.notes += [Note(self.searchMemberNamed(note['sender']), member, note['content'])]
+                        self.notes += [Note(self.search_member_named(note['sender']), member, note['content'])]
 
-    def addNote(self, sender, receipient, content):
+    def add_note(self, sender, receipient, content):
         newNote = Note(sender, receipient, content)
         self.notes.append(newNote)
-        self.storeNotes()
+        self.store_notes()
 
-    def removeNote(self, note):
+    def remove_note(self, note):
         self.notes.remove(note)
-        self.storeNotes()
+        self.store_notes()
 
-    def editNote(self, edit_note):
+    def edit_note(self, edit_note):
         self.communicator.say("Do you want to change the content? ")
         answer = self.communicator.listen()
         if answer == "yes":
@@ -185,43 +209,43 @@ class HomeAssistant:
         if answer == "yes":
             self.communicator.say("Tell me the name of the new recipient ")
             to_who = self.communicator.listen()
-            recipient = self.searchMemberNamed(to_who)
+            recipient = self.search_member_named(to_who)
             edit_note.recipient = recipient
-        self.storeNotes()
+        self.store_notes()
 
-    def getNotesTo(self, recipient):
+    def get_notes_to(self, recipient):
         notes = []
         for note in self.notes:
             if note.recipient == recipient:
                 notes.append(note)
         return notes
 
-    def getNotesFrom(self, sender):
+    def get_notes_from(self, sender):
         notes = []
         for note in self.notes:
             if note.sender == sender:
                 notes.append(sender)
         return notes
 
-    def getNotesFromTo(self, sender, recipient):
+    def get_notes_from_to(self, sender, recipient):
         notes = []
         for note in self.notes:
             if note.sender == sender and note.recipient == recipient:
                 notes += [note]
         return notes
 
-    def getMostProbableNote(self, notes_to_who, words):
+    def get_most_probable_note(self, notes_to_who, words):
         max_note = notes_to_who[0]
-        max = len([word for word in words if word in max_note.content])
+        top = len([word for word in words if word in max_note.content])
         for note in notes_to_who:
-            if len([word for word in words if word in note.content]) > max:
+            if len([word for word in words if word in note.content]) > top:
                 max_note = note
-                max = len([word for word in words if word in note.content])
+                top = len([word for word in words if word in note.content])
         return max_note
 
-    def getMostProbableAction(self, text):
+    def get_most_probable_action(self, text):
         words = text.split()
-        prob = {"edit": len([w for w in words if w in ["edit", "modity", "change"]])/len(words),
-                "remove": len([w for w in words if w in ["delete", "remove", "forget"]])/len(words),
-                "leave": len([w for w in words if w in ["new", "leave", "say", "tell"]])/len(words)}
+        prob = {"edit": len([w for w in words if w in ["edit", "modity", "change"]]) / len(words),
+                "remove": len([w for w in words if w in ["delete", "remove", "forget"]]) / len(words),
+                "leave": len([w for w in words if w in ["new", "leave", "say", "tell"]]) / len(words)}
         return max(prob, key=lambda key: prob[key])
