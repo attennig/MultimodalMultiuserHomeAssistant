@@ -1,6 +1,6 @@
-from src.Member import Member
-from src.Note import Note
-from src.CommunicationHandler import CommunicationHandler
+from Member import Member
+from Note import Note
+from CommunicationHandler import CommunicationHandler
 import cv2
 import face_recognition
 import pickle
