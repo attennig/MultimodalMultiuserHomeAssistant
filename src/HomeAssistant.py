@@ -21,30 +21,26 @@ class HomeAssistant:
         while True:
             # capture next frame and detect eventual face/s
             _, frame = video_capture.read()
-            faces = self.detect_presence(frame)
-            if faces is not None:
-                # for (x, y, w, h) in faces:
-                #     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 1)
-                # cv2.imshow("Video", frame)
-                # cv2.waitKey(42)
-                member = self.recognize_member(frame, faces)
+            if self.detect_presence(frame):
+                member = self.recognize_member(frame)
                 if member is None:
-                    self.non_member_interaction()
+                    self.non_member_interaction(frame)
                 else:
-                    self.member_interaction(member)
+                    self.save_frame(frame, member)
+                    self.member_interaction(frame, member)
 
     '''Interactions'''
 
-    def non_member_interaction(self):
+    def non_member_interaction(self, frame):
         self.communicator.say("Seems you are not part of this Clan, do you want to register?")
         answer = self.communicator.listen()
         if "yes" in answer.split():
-            self.register_member()
+            self.register_member(frame)
 
-    def member_interaction(self, member):
+    def member_interaction(self, frame, member):
         while True:
             self.communicator.say(f"Hello, {member.name[0].capitalize() + member.name[1:]}")
-            if not self.is_member_still_here(member):
+            if not self.is_member_still_here(frame, member):
                 break
             notes = self.get_notes_to(member)
             if len(notes) == 0:
@@ -120,27 +116,27 @@ class HomeAssistant:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         gray = cv2.equalizeHist(gray)
         # detect faces
-        faces = face_cascade.detectMultiScale(gray, minNeighbors=5, minSize=(60, 60), flags=cv2.CASCADE_SCALE_IMAGE)
-        return faces
+        faces = face_cascade.detectMultiScale(gray, minNeighbors=6, minSize=(60, 60), flags=cv2.CASCADE_SCALE_IMAGE)
+        return faces is not None
 
-    def is_member_still_here(self, member):
-        return self.detect_presence()  # and (self.recognizeMember() == member)
+    def is_member_still_here(self, frame, member):
+        return self.detect_presence(frame) and (self.recognize_member(frame) == member)
 
     '''Members'''
 
-    def recognize_member(self, frame, faces):
+    def recognize_member(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        encodings = face_recognition.face_encodings(rgb)
-        print(encodings)
-        self.communicator.say(f"Authentication\nWhat is your name? ")
+        # encodings = face_recognition.face_encodings(rgb)
+        self.communicator.say(f"Authentication\nWhat is your name?")
         name = self.communicator.listen()
         return self.search_member_named(name)
 
-    def register_member(self):
-        self.communicator.say(f"Registration\nWhat is your name? ")
+    def register_member(self, frame):
+        self.communicator.say(f"Registration\nWhat is your name?")
         name = self.communicator.listen()
-        # Gabriel: take pictures
-        pictures = None
+        os.mkdir(os.path.join("..", "data", name.lower()))
+        cv2.imwrite(os.path.join("..", "data", name.lower(), "00.jpg"), frame)
+        pictures = [frame]
         newMember = Member(name.lower(), pictures)
         self.members.append(newMember)
         self.store_members()
@@ -150,12 +146,12 @@ class HomeAssistant:
         members_dict = {}
         for member in self.members:
             members_dict[member.name] = member.pictures
-        pickle.dump(members_dict, open("../data/members.p", "wb"))
+        pickle.dump(members_dict, open(os.path.join("..", "data", "members.pkl", "wb")))
 
     def load_members(self):
         self.members = []
-        if os.path.getsize("../data/members.p") > 0:
-            members_dict = pickle.load(open("../data/members.p", "rb"))
+        if os.path.getsize(os.path.join("..", "data", "members.pkl")) > 0:
+            members_dict = pickle.load(open(os.path.join("..", "data", "members.pkl", "rb")))
             for name in members_dict:
                 self.members += [Member(name, members_dict[name])]
         self.load_notes()
@@ -177,12 +173,12 @@ class HomeAssistant:
             else:
                 notes_dict[note.recipient.name] = [{'sender': note.sender.name, 'content': note.content}]
 
-        pickle.dump(notes_dict, open("../data/notes.p", "wb"))
+        pickle.dump(notes_dict, open(os.path.join("..", "data", "notes.pkl", "wb")))
 
     def load_notes(self):
         self.notes = []
-        if os.path.getsize("../data/notes.p") > 0:
-            notes_dict = pickle.load(open("../data/notes.p", "rb"))
+        if os.path.getsize(os.path.join("..", "data", "notes.pkl")) > 0:
+            notes_dict = pickle.load(open(os.path.join("..", "data", "notes.pkl", "rb")))
             for member in self.members:
                 if member.name in notes_dict.keys():
                     notes_to_member = notes_dict[member.name]
@@ -249,3 +245,9 @@ class HomeAssistant:
                 "remove": len([w for w in words if w in ["delete", "remove", "forget"]]) / len(words),
                 "leave": len([w for w in words if w in ["new", "leave", "say", "tell"]]) / len(words)}
         return max(prob, key=lambda key: prob[key])
+
+    def save_frame(self, frame, member):
+        name = member.get_name()
+        pictures = member.get_pictures()
+        cv2.imwrite(os.path.join("..", "data", name.lower(), str(len(pictures)) + ".jpg"), frame)
+        member.set_pictures(pictures.append(frame))
