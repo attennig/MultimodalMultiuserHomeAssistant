@@ -1,10 +1,12 @@
-from Member import Member
-from Note import Note
-from CommunicationHandler import CommunicationHandler
+import os
+import pickle
+
 import cv2
 import face_recognition
-import pickle
-import os
+
+from CommunicationHandler import CommunicationHandler
+from Member import Member
+from Note import Note
 
 
 class HomeAssistant:
@@ -17,17 +19,19 @@ class HomeAssistant:
 
     def start(self):
         # start onboard webcam
-        video_capture = cv2.VideoCapture(0)
+        video_capture = cv2.VideoCapture(0, cv2.CAP_DSHOW)
         while True:
             # capture next frame and detect eventual face/s
             _, frame = video_capture.read()
+            # frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
             if self.detect_presence(frame):
+                # attempt recognition
                 member = self.recognize_member(frame)
                 if member is None:
                     self.non_member_interaction(frame)
                 else:
-                    self.save_frame(frame, member)
                     self.member_interaction(frame, member)
+                    self.save_frame(frame, member)
 
     '''Interactions'''
 
@@ -120,13 +124,19 @@ class HomeAssistant:
         return faces is not None
 
     def is_member_still_here(self, frame, member):
-        return self.detect_presence(frame) and (self.recognize_member(frame) == member)
+        return self.detect_presence(frame) and self.recognize_member(frame) == member
 
     '''Members'''
 
     def recognize_member(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        # encodings = face_recognition.face_encodings(rgb)
+        encodings = face_recognition.face_encodings(rgb)
+        for encoding in encodings:
+            for member in self.members:
+                for picture in member.get_pictures():
+                    matches = face_recognition.compare_faces(member.pictures, encoding)
+                    if True in matches:
+                        return self.search_member_named(member.get_name())
         self.communicator.say(f"Authentication\nWhat is your name?")
         name = self.communicator.listen()
         return self.search_member_named(name)
@@ -134,9 +144,9 @@ class HomeAssistant:
     def register_member(self, frame):
         self.communicator.say(f"Registration\nWhat is your name?")
         name = self.communicator.listen()
-        os.mkdir(os.path.join("..", "data", name.lower()))
-        cv2.imwrite(os.path.join("..", "data", name.lower(), "00.jpg"), frame)
-        pictures = [frame]
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        boxes = face_recognition.face_locations(rgb, model="cnn")
+        pictures = face_recognition.face_encodings(rgb, boxes)
         newMember = Member(name.lower(), pictures)
         self.members.append(newMember)
         self.store_members()
@@ -146,12 +156,12 @@ class HomeAssistant:
         members_dict = {}
         for member in self.members:
             members_dict[member.name] = member.pictures
-        pickle.dump(members_dict, open(os.path.join("..", "data", "members.pkl", "wb")))
+        pickle.dump(members_dict, open(os.path.join("..", "data", "members.pkl"), "wb"))
 
     def load_members(self):
         self.members = []
         if os.path.getsize(os.path.join("..", "data", "members.pkl")) > 0:
-            members_dict = pickle.load(open(os.path.join("..", "data", "members.pkl", "rb")))
+            members_dict = pickle.load(open(os.path.join("..", "data", "members.pkl"), "rb"))
             for name in members_dict:
                 self.members += [Member(name, members_dict[name])]
         self.load_notes()
@@ -173,12 +183,12 @@ class HomeAssistant:
             else:
                 notes_dict[note.recipient.name] = [{'sender': note.sender.name, 'content': note.content}]
 
-        pickle.dump(notes_dict, open(os.path.join("..", "data", "notes.pkl", "wb")))
+        pickle.dump(notes_dict, open(os.path.join("..", "data", "notes.pkl"), "wb"))
 
     def load_notes(self):
         self.notes = []
         if os.path.getsize(os.path.join("..", "data", "notes.pkl")) > 0:
-            notes_dict = pickle.load(open(os.path.join("..", "data", "notes.pkl", "rb")))
+            notes_dict = pickle.load(open(os.path.join("..", "data", "notes.pkl"), "rb"))
             for member in self.members:
                 if member.name in notes_dict.keys():
                     notes_to_member = notes_dict[member.name]
@@ -247,7 +257,6 @@ class HomeAssistant:
         return max(prob, key=lambda key: prob[key])
 
     def save_frame(self, frame, member):
-        name = member.get_name()
-        pictures = member.get_pictures()
-        cv2.imwrite(os.path.join("..", "data", name.lower(), str(len(pictures)) + ".jpg"), frame)
-        member.set_pictures(pictures.append(frame))
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        boxes = face_recognition.face_locations(rgb, model="cnn")
+        member.pictures.append(face_recognition.face_encodings(rgb, boxes))
