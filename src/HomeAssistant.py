@@ -1,8 +1,8 @@
 import os
 import pickle
 
-import cv2
-import face_recognition
+import cv2 # detection
+import face_recognition # recognition
 
 from CommunicationHandler import CommunicationHandler
 from Member import Member
@@ -15,7 +15,8 @@ class HomeAssistant:
         self.members = []
         self.notes = []
         self.load_members()
-        self.communicator = CommunicationHandler(blind, deaf, dumb)
+        self.language = "en-EN"
+        self.communicator = CommunicationHandler(blind, deaf, dumb, self.language)
 
     def start(self):
         # start onboard webcam
@@ -36,9 +37,12 @@ class HomeAssistant:
     '''Interactions'''
 
     def non_member_interaction(self, frame):
-        self.communicator.say("Seems you are not part of this Clan, do you want to register?")
+        if self.language == "it-IT":
+            self.communicator.say("Sembra che tu non faccia parte di questo Clan, vuoi registrarti?")
+        else:
+            self.communicator.say("Seems you are not part of this Clan, do you want to register?")
         answer = self.communicator.listen()
-        if "yes" in answer.split():
+        if "yes" in answer.split() or "sì" in answer.split():
             self.register_member(frame)
 
     def member_interaction(self, frame, member):
@@ -66,6 +70,7 @@ class HomeAssistant:
                     self.note_interaction(action, member)
 
     def leave_note_interaction(self, member):
+        # note in breadcast
         self.communicator.say(f"Who is the recipient of your note? ")
         to_who = self.communicator.listen()
         recipient = self.search_member_named(to_who)
@@ -133,16 +138,19 @@ class HomeAssistant:
         encodings = face_recognition.face_encodings(rgb)
         for encoding in encodings:
             for member in self.members:
-                for picture in member.get_pictures():
-                    matches = face_recognition.compare_faces(member.pictures, encoding)
-                    if True in matches:
-                        return self.search_member_named(member.get_name())
+                matches = face_recognition.compare_faces(member.pictures, encoding)
+                if True in matches:
+                    return member
         self.communicator.say(f"Authentication\nWhat is your name?")
         name = self.communicator.listen()
         return self.search_member_named(name)
 
     def register_member(self, frame):
-        self.communicator.say(f"Registration\nWhat is your name?")
+        # prendere più di un img per utente
+        if self.language == "it-IT":
+            self.communicator.say("Registrazione\n Come ti chiami?")
+        else:
+            self.communicator.say(f"Registration\nWhat is your name?")
         name = self.communicator.listen()
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         boxes = face_recognition.face_locations(rgb, model="cnn")
@@ -250,6 +258,9 @@ class HomeAssistant:
         return max_note
 
     def get_most_probable_action(self, text):
+        # hot words
+        # grammatica con diverse alternativa per il verbo con sinonimi, e poi l'ogetto con sinonimi.
+        # per ogni azione definire sin verbi e obj
         words = text.split()
         prob = {"edit": len([w for w in words if w in ["edit", "modity", "change"]]) / len(words),
                 "remove": len([w for w in words if w in ["delete", "remove", "forget"]]) / len(words),
