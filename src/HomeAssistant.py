@@ -8,15 +8,13 @@ from CommunicationHandler import CommunicationHandler
 from Member import Member
 from Note import Note
 
-
 class HomeAssistant:
     def __init__(self, blind=False, deaf=False, dumb=False):
         # load data from db
         self.members = []
         self.notes = []
         self.load_members()
-        self.language = "en-EN"
-        self.communicator = CommunicationHandler(blind, deaf, dumb, self.language)
+        self.communicator = CommunicationHandler(blind, deaf, dumb)
 
     def start(self):
         # start onboard webcam
@@ -35,87 +33,88 @@ class HomeAssistant:
                     self.save_frame(frame, member)
 
     '''Interactions'''
-
     def non_member_interaction(self, frame):
-        if self.language == "it-IT":
-            self.communicator.say("Sembra che tu non faccia parte di questo Clan, vuoi registrarti?")
-        else:
-            self.communicator.say("Seems you are not part of this Clan, do you want to register?")
+        self.communicator.say("Sembra che tu non faccia parte di questo Clan, vuoi registrarti?")
         answer = self.communicator.listen()
-        if "yes" in answer.split() or "sì" in answer.split():
+        if "sì" in answer.split():
             self.register_member(frame)
 
     def member_interaction(self, frame, member):
         while True:
-            self.communicator.say(f"Hello, {member.name[0].capitalize() + member.name[1:]}")
+            self.communicator.say(f"Ciao, {member.name[0].capitalize() + member.name[1:]}")
             if not self.is_member_still_here(frame, member):
                 break
             notes = self.get_notes_to(member)
             if len(notes) == 0:
-                self.communicator.say(f"There are no notes left for you")
+                self.communicator.say("Non ci sono note per te")
             else:
-                self.communicator.say(f"I have found {len(notes)} notes for you, do you want to hear them?")
+                self.communicator.say(f"Ho trovato {len(notes)} note per te, vuoi ascoltarle?")
                 answer = self.communicator.listen()
-                if "yes" in answer.split():
+                if "sì" in answer.split():
                     self.tell_notes(notes)
-            self.communicator.say(f"What can I do for you, {member.name[0].capitalize() + member.name[1:]}?")
+            self.communicator.say(f"Cosa posso fare per te, {member.name[0].capitalize() + member.name[1:]}?")
             answer = self.communicator.listen()
             action = self.get_most_probable_action(answer)
-            self.communicator.say(f"So, do you want to {action} a note?")
+            #recipent = self.get_most_probable_recipent(answer)
+            #if recipent
+            self.communicator.say(f"Confermi l'azione {action}?")
             answer = self.communicator.listen()
-            if "yes" in answer:
-                if action == "leave":
+            if "sì" in answer.split():
+                if action == "lascia":
                     self.leave_note_interaction(member)
                 else:
                     self.note_interaction(action, member)
-
     def leave_note_interaction(self, member):
         # note in breadcast
-        self.communicator.say(f"Who is the recipient of your note? ")
+        self.communicator.say("Per chi è la nota? ")
         to_who = self.communicator.listen()
-        recipient = self.search_member_named(to_who)
-        if recipient is None:
-            self.communicator.say(f"Sorry I couldn't find any member named {to_who}")
+        if len([word for word in to_who.split() if word in ["tutti", "tutto", "altri"]]) >0 :
+            recipients = [recipient for recipient in self.members if recipient != member]
         else:
-            self.communicator.say(f"What do you want to say to {recipient.name}?")
+            recipients = [self.search_member_named(name) for name in to_who.split() if type(self.search_member_named(to_who)) == type(member)]
+        if len(recipients) == 0:
+            self.communicator.say(f"Mi dispiace non ho trovato nessun membro che corrisponde alla richiesta")
+        else:
+            self.communicator.say(f"Cosa vuoi dire a {[recipient.name for recipient in recipients].split()}?")
             content = self.communicator.listen()
-            self.add_note(member, recipient, content)
+            for recipient in recipients: self.add_note(member, recipient, content)
 
     def note_interaction(self, mode, member):
-        assert mode == "edit" or mode == "remove"
-        self.communicator.say(f"Which member is the recipient? ")
+        assert mode == "modifica" or mode == "rimuovi"
+        self.communicator.say("Chi è il destinatario? ")
         to_who = self.communicator.listen()
         # check to_who is a member
         recipient = self.search_member_named(to_who)
         if recipient is None:
-            self.communicator.say(f"Sorry I couldn't find any member with such name")
+            self.communicator.say(f"Mi dispiace non ho trovato nessun membro chiamato {recipient}")
         else:
             notes_to_who = self.get_notes_from_to(member, recipient)
-            self.communicator.say(f"I have found {len(notes_to_who)} from you to {recipient.name}")
+            self.communicator.say(f"Ho trovato {len(notes_to_who)} tue note per {recipient.name}")
             if len(notes_to_who) == 0:
                 print("ERROR: there are no notes!! ")
                 return
             if len(notes_to_who) == 1:
                 # there is just one note
-                if mode == "edit":
+                if mode == "modifica":
                     self.edit_note(notes_to_who[0])
                 else:
                     self.remove_note(notes_to_who[0])
             else:
-                self.communicator.say(f"You need to be more specific. Try typing some words in the note\n")
+                self.communicator.say(f"Puoi darmi dei dattagli sul contenuto della nota? \n")
                 words = self.communicator.listen()
                 most_prob_note = self.get_most_probable_note(notes_to_who, words.split())
-                self.communicator.say(f"Do you want to edit this note? \"{most_prob_note.content}\"")
+                if mode == "modifica": self.communicator.say(f"Vuoi modificale la seguente nota? \"{most_prob_note.content}\"")
+                else: self.communicator.say(f"Vuoi eliminare la seguente nota? \"{most_prob_note.content}\"")
                 answer = self.communicator.listen()
-                if answer == "yes":
-                    if mode == "edit":
+                if "sì" in answer.split():
+                    if mode == "modifica":
                         self.edit_note(most_prob_note)
                     else:
                         self.remove_note(most_prob_note)
 
     def tell_notes(self, notes):
         for note in notes:
-            self.communicator.say(f"Note from {note.sender.name}:\n{note.content}")
+            self.communicator.say(f"Nota da {note.sender.name}:\n{note.content}")
             self.remove_note(note)
 
     def detect_presence(self, frame):
@@ -132,7 +131,6 @@ class HomeAssistant:
         return self.detect_presence(frame) and self.recognize_member(frame) == member
 
     '''Members'''
-
     def recognize_member(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         encodings = face_recognition.face_encodings(rgb)
@@ -141,16 +139,16 @@ class HomeAssistant:
                 matches = face_recognition.compare_faces(member.pictures, encoding)
                 if True in matches:
                     return member
-        self.communicator.say(f"Authentication\nWhat is your name?")
-        name = self.communicator.listen()
-        return self.search_member_named(name)
+        self.communicator.say(f"Ciao, non ti riconosco. Chi sei?")
+        answer = self.communicator.listen().split()
+
+        members = [self.search_member_named(name) for name in answer if self.search_member_named(name) != None]
+        if len(members)>0:
+            return members[0]
 
     def register_member(self, frame):
         # prendere più di un img per utente
-        if self.language == "it-IT":
-            self.communicator.say("Registrazione\n Come ti chiami?")
-        else:
-            self.communicator.say(f"Registration\nWhat is your name?")
+        self.communicator.say("Registrazione\n Come ti chiami?")
         name = self.communicator.listen()
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         boxes = face_recognition.face_locations(rgb, model="cnn")
@@ -158,7 +156,7 @@ class HomeAssistant:
         newMember = Member(name.lower(), pictures)
         self.members.append(newMember)
         self.store_members()
-        self.communicator.say("Registration completed")
+        self.communicator.say("Registrazione completata")
 
     def store_members(self):
         members_dict = {}
@@ -181,9 +179,7 @@ class HomeAssistant:
         return None
 
     '''Notes'''
-
     def store_notes(self):
-        # esempio: {"Antonio": [NoteObj, NoteObj],, "Fabio": [NoteObj, NoteObj]}
         notes_dict = {}
         for note in self.notes:
             if note.sender.name in notes_dict.keys():
@@ -213,18 +209,21 @@ class HomeAssistant:
         self.store_notes()
 
     def edit_note(self, edit_note):
-        self.communicator.say("Do you want to change the content? ")
+        self.communicator.say("Vuoi cambiare il contenuto? ")
         answer = self.communicator.listen()
-        if answer == "yes":
-            self.communicator.say("Write the new content ")
+        if "sì" in answer.split():
+            self.communicator.say("Dimmi il nuovo contenuto")
             edit_note.content = self.communicator.listen()
-        self.communicator.say("Do you want to change the recipient ")
+        self.communicator.say("Vuoi cambiare il destinatario? ")
         answer = self.communicator.listen()
-        if answer == "yes":
-            self.communicator.say("Tell me the name of the new recipient ")
+        if "sì" in answer.split():
+            self.communicator.say("Dimmi il nome del nuovo destinatario")
             to_who = self.communicator.listen()
             recipient = self.search_member_named(to_who)
-            edit_note.recipient = recipient
+            if recipient is None:
+                self.communicator.say(f"Mi dispiace non ho trovato nessun membro chiamato {recipient}")
+            else:
+                edit_note.recipient = recipient
         self.store_notes()
 
     def get_notes_to(self, recipient):
@@ -262,11 +261,19 @@ class HomeAssistant:
         # grammatica con diverse alternativa per il verbo con sinonimi, e poi l'ogetto con sinonimi.
         # per ogni azione definire sin verbi e obj
         words = text.split()
-        prob = {"edit": len([w for w in words if w in ["edit", "modity", "change"]]) / len(words),
-                "remove": len([w for w in words if w in ["delete", "remove", "forget"]]) / len(words),
-                "leave": len([w for w in words if w in ["new", "leave", "say", "tell"]]) / len(words)}
+        prob = {"modifica": len([w for w in words if w in ["modifica", "modificare","cambia", "cambiare"]]) / len(words),
+                "rimuovi": len([w for w in words if w in ["rimuovere", "rimuovi", "cancella", "cancellare", "elimina", "eliminare"]]) / len(words),
+                "lascia": len([w for w in words if w in ["nuova", "lasciare", "dire", "riferire"]]) / len(words)}
         return max(prob, key=lambda key: prob[key])
 
+    def get_most_probable_recipient(self, text):
+        words = text.split()
+        if len([word for word in words if word in ["tutti", "altri"]])>0:
+            recipient = self.members
+        else:
+            recipient = [member for member in self.members if member.name in words]
+        return recipient
+    
     def save_frame(self, frame, member):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         boxes = face_recognition.face_locations(rgb, model="cnn")
