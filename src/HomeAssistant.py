@@ -32,6 +32,46 @@ class HomeAssistant:
                     self.member_interaction(frame, member)
                     self.save_frame(frame, member)
 
+    def detect_presence(self, frame):
+        # load and instantiate haar cascade classifier
+        face_cascade = cv2.CascadeClassifier(os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
+        # convert input frame to grayscale
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray)
+        # detect faces
+        faces = face_cascade.detectMultiScale(gray, minNeighbors=6, minSize=(60, 60), flags=cv2.CASCADE_SCALE_IMAGE)
+        return faces is not None
+
+    def recognize_member(self, frame):
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        encodings = face_recognition.face_encodings(rgb)
+        for encoding in encodings:
+            for member in self.members:
+                matches = face_recognition.compare_faces(member.pictures, encoding)
+                if True in matches:
+                    return member
+        self.communicator.say(f"Ciao, non ti riconosco. Chi sei?")
+        answer = self.communicator.listen().split()
+
+        members = [self.search_member_named(name) for name in answer if self.search_member_named(name) != None]
+        if len(members)>0:
+            return members[0]
+
+    def register_member(self, frame):
+        # prendere più di un img per utente
+        self.communicator.say("Registrazione\n Come ti chiami?")
+        name = self.communicator.listen()
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        boxes = face_recognition.face_locations(rgb, model="cnn")
+        pictures = face_recognition.face_encodings(rgb, boxes)
+        newMember = Member(name.lower(), pictures)
+        self.members.append(newMember)
+        self.store_members()
+        self.communicator.say("Registrazione completata")
+
+    def is_member_still_here(self, frame, member):
+        return self.detect_presence(frame) and self.recognize_member(frame) == member
+
     '''Interactions'''
     def non_member_interaction(self, frame):
         self.communicator.say("Sembra che tu non faccia parte di questo Clan, vuoi registrarti?")
@@ -117,61 +157,18 @@ class HomeAssistant:
             self.communicator.say(f"Nota da {note.sender.name}:\n{note.content}")
             self.remove_note(note)
 
-    def detect_presence(self, frame):
-        # load and instantiate haar cascade classifier
-        face_cascade = cv2.CascadeClassifier(os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
-        # convert input frame to grayscale
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.equalizeHist(gray)
-        # detect faces
-        faces = face_cascade.detectMultiScale(gray, minNeighbors=6, minSize=(60, 60), flags=cv2.CASCADE_SCALE_IMAGE)
-        return faces is not None
 
-    def is_member_still_here(self, frame, member):
-        return self.detect_presence(frame) and self.recognize_member(frame) == member
+    def get_most_probable_action(self, text):
+        # hot words
+        # grammatica con diverse alternativa per il verbo con sinonimi, e poi l'ogetto con sinonimi.
+        # per ogni azione definire sin verbi e obj
+        words = text.split()
+        prob = {"modifica": len([w for w in words if w in ["modifica", "modificare","cambia", "cambiare"]]) / len(words),
+                "rimuovi": len([w for w in words if w in ["rimuovere", "rimuovi", "cancella", "cancellare", "elimina", "eliminare"]]) / len(words),
+                "lascia": len([w for w in words if w in ["nuova", "lasciare", "dire", "riferire"]]) / len(words)}
+        return max(prob, key=lambda key: prob[key])
 
     '''Members'''
-    def recognize_member(self, frame):
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        encodings = face_recognition.face_encodings(rgb)
-        for encoding in encodings:
-            for member in self.members:
-                matches = face_recognition.compare_faces(member.pictures, encoding)
-                if True in matches:
-                    return member
-        self.communicator.say(f"Ciao, non ti riconosco. Chi sei?")
-        answer = self.communicator.listen().split()
-
-        members = [self.search_member_named(name) for name in answer if self.search_member_named(name) != None]
-        if len(members)>0:
-            return members[0]
-
-    def register_member(self, frame):
-        # prendere più di un img per utente
-        self.communicator.say("Registrazione\n Come ti chiami?")
-        name = self.communicator.listen()
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        boxes = face_recognition.face_locations(rgb, model="cnn")
-        pictures = face_recognition.face_encodings(rgb, boxes)
-        newMember = Member(name.lower(), pictures)
-        self.members.append(newMember)
-        self.store_members()
-        self.communicator.say("Registrazione completata")
-
-    def store_members(self):
-        members_dict = {}
-        for member in self.members:
-            members_dict[member.name] = member.pictures
-        pickle.dump(members_dict, open(os.path.join("..", "data", "members.pkl"), "wb"))
-
-    def load_members(self):
-        self.members = []
-        if os.path.getsize(os.path.join("..", "data", "members.pkl")) > 0:
-            members_dict = pickle.load(open(os.path.join("..", "data", "members.pkl"), "rb"))
-            for name in members_dict:
-                self.members += [Member(name, members_dict[name])]
-        self.load_notes()
-
     def search_member_named(self, name):
         for member in self.members:
             if member.name == name:
@@ -179,26 +176,6 @@ class HomeAssistant:
         return None
 
     '''Notes'''
-    def store_notes(self):
-        notes_dict = {}
-        for note in self.notes:
-            if note.sender.name in notes_dict.keys():
-                notes_dict[note.recipient.name] += [{'sender': note.sender.name, 'content': note.content}]
-            else:
-                notes_dict[note.recipient.name] = [{'sender': note.sender.name, 'content': note.content}]
-
-        pickle.dump(notes_dict, open(os.path.join("..", "data", "notes.pkl"), "wb"))
-
-    def load_notes(self):
-        self.notes = []
-        if os.path.getsize(os.path.join("..", "data", "notes.pkl")) > 0:
-            notes_dict = pickle.load(open(os.path.join("..", "data", "notes.pkl"), "rb"))
-            for member in self.members:
-                if member.name in notes_dict.keys():
-                    notes_to_member = notes_dict[member.name]
-                    for note in notes_to_member:
-                        self.notes += [Note(self.search_member_named(note['sender']), member, note['content'])]
-
     def add_note(self, sender, receipient, content):
         newNote = Note(sender, receipient, content)
         self.notes.append(newNote)
@@ -256,24 +233,41 @@ class HomeAssistant:
                 top = len([word for word in words if word in note.content])
         return max_note
 
-    def get_most_probable_action(self, text):
-        # hot words
-        # grammatica con diverse alternativa per il verbo con sinonimi, e poi l'ogetto con sinonimi.
-        # per ogni azione definire sin verbi e obj
-        words = text.split()
-        prob = {"modifica": len([w for w in words if w in ["modifica", "modificare","cambia", "cambiare"]]) / len(words),
-                "rimuovi": len([w for w in words if w in ["rimuovere", "rimuovi", "cancella", "cancellare", "elimina", "eliminare"]]) / len(words),
-                "lascia": len([w for w in words if w in ["nuova", "lasciare", "dire", "riferire"]]) / len(words)}
-        return max(prob, key=lambda key: prob[key])
+    '''Persistance'''
+    def store_members(self):
+        members_dict = {}
+        for member in self.members:
+            members_dict[member.name] = member.pictures
+        pickle.dump(members_dict, open(os.path.join("..", "data", "members.pkl"), "wb"))
 
-    def get_most_probable_recipient(self, text):
-        words = text.split()
-        if len([word for word in words if word in ["tutti", "altri"]])>0:
-            recipient = self.members
-        else:
-            recipient = [member for member in self.members if member.name in words]
-        return recipient
-    
+    def load_members(self):
+        self.members = []
+        if os.path.getsize(os.path.join("..", "data", "members.pkl")) > 0:
+            members_dict = pickle.load(open(os.path.join("..", "data", "members.pkl"), "rb"))
+            for name in members_dict:
+                self.members += [Member(name, members_dict[name])]
+        self.load_notes()
+
+    def store_notes(self):
+        notes_dict = {}
+        for note in self.notes:
+            if note.sender.name in notes_dict.keys():
+                notes_dict[note.recipient.name] += [{'sender': note.sender.name, 'content': note.content}]
+            else:
+                notes_dict[note.recipient.name] = [{'sender': note.sender.name, 'content': note.content}]
+
+        pickle.dump(notes_dict, open(os.path.join("..", "data", "notes.pkl"), "wb"))
+
+    def load_notes(self):
+        self.notes = []
+        if os.path.getsize(os.path.join("..", "data", "notes.pkl")) > 0:
+            notes_dict = pickle.load(open(os.path.join("..", "data", "notes.pkl"), "rb"))
+            for member in self.members:
+                if member.name in notes_dict.keys():
+                    notes_to_member = notes_dict[member.name]
+                    for note in notes_to_member:
+                        self.notes += [Note(self.search_member_named(note['sender']), member, note['content'])]
+
     def save_frame(self, frame, member):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         boxes = face_recognition.face_locations(rgb, model="cnn")
