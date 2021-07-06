@@ -270,7 +270,6 @@ class HomeAssistant:
         pickle.dump(members_dict, open(os.path.join("..", "data", "members.pkl"), "wb"))
 
     def load_members(self):
-        self.members = []
         if os.path.getsize(os.path.join("..", "data", "members.pkl")) > 0:
             members_dict = pickle.load(open(os.path.join("..", "data", "members.pkl"), "rb"))
             for name in members_dict:
@@ -288,7 +287,6 @@ class HomeAssistant:
         pickle.dump(notes_dict, open(os.path.join("..", "data", "notes.pkl"), "wb"))
 
     def load_notes(self):
-        self.notes = []
         if os.path.getsize(os.path.join("..", "data", "notes.pkl")) > 0:
             notes_dict = pickle.load(open(os.path.join("..", "data", "notes.pkl"), "rb"))
             for member in self.members:
