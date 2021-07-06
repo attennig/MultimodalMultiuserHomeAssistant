@@ -1,6 +1,7 @@
+import sys
+
 import pyttsx3
 import speech_recognition as sr
-import sys
 
 
 class CommunicationHandler:
@@ -16,10 +17,11 @@ class CommunicationHandler:
         self.voice = pyttsx3.init()
         self.mic = sr.Microphone()
         self.ear = sr.Recognizer()
-        self.voice.setProperty('voice', 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_IT-IT_ELSA_11.0')
+        self.voice.setProperty('voice',
+                               'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_IT-IT_ELSA_11.0')
 
         self.engine = 0
-        self.possible_engines = ["Google", "Sphinx"]
+        self.possible_engines = ["Google"]
 
     def say(self, text):
         if self.VIDEO_OUT:
@@ -46,11 +48,11 @@ class CommunicationHandler:
                             # recognize speech using Google Speech Recognition
                             text = self.ear.recognize_google(audio, language="it-IT")
                         print(f"{self.possible_engines[self.engine]} crede che tu abbia detto {text}")
-                        if text != "": return text.lower()
+                        if text != "":
+                            return text.lower()
                     except sr.UnknownValueError:
                         self.say("Non ho capito, potresti ripetere?")
                     except sr.RequestError as e:
                         print(f"{self.possible_engines[self.engine]} request error; {e}")
 
         return input("Scrivi qui ").lower()
-

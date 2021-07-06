@@ -51,9 +51,10 @@ class HomeAssistant:
         encodings = face_recognition.face_encodings(rgb)
         for encoding in encodings:
             for member in self.members:
-                matches = face_recognition.compare_faces(member.pictures, encoding)
-                if True in matches:
-                    return member
+                for picture in member.pictures:
+                    matches = face_recognition.compare_faces([picture], encoding)
+                    if True in matches:
+                        return member
         self.communicator.say(f"Ciao, non ti riconosco. Chi sei?")
         answer = self.communicator.listen().split()
         members = [self.search_member_named(name) for name in answer if self.search_member_named(name) is not None]
