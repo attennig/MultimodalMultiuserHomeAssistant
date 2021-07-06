@@ -1,5 +1,6 @@
 import os
 import pickle
+from time import sleep
 
 import cv2  # detection
 import face_recognition  # recognition
@@ -20,6 +21,7 @@ class HomeAssistant:
 
     def start(self):
         while True:
+            delta = 0
             # capture next frame and detect eventual face/s
             _, frame = self.camera.read()
             # frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
@@ -27,10 +29,13 @@ class HomeAssistant:
                 # attempt recognition
                 member = self.recognize_member(frame)
                 if member is None:
-                    self.non_member_interaction(frame)
+                    _, frame = self.camera.read()
+                    if self.is_member_still_here(frame):
+                        self.non_member_interaction(frame)
                 else:
                     self.member_interaction(member)
                     self.save_frame(frame, member)  # saves initial detection frame
+                sleep(5)  # avoids performing new interactions immediately after terminating one
 
     def detect_presence(self, frame):
         # load and instantiate haar cascade classifier
@@ -77,6 +82,8 @@ class HomeAssistant:
     def non_member_interaction(self, frame):
         self.communicator.say("Sembra che tu non faccia parte di questo Clan, vuoi registrarti?")
         answer = self.communicator.listen()
+        if "no" in answer.split():
+            self.communicator.say("Arrivederci!")
         if "sì" in answer.split():
             self.register_member(frame)
 
