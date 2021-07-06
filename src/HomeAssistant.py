@@ -1,12 +1,13 @@
 import os
 import pickle
 
-import cv2 # detection
-import face_recognition # recognition
+import cv2  # detection
+import face_recognition  # recognition
 
 from CommunicationHandler import CommunicationHandler
 from Member import Member
 from Note import Note
+
 
 class HomeAssistant:
     def __init__(self, blind=False, deaf=False, dumb=False):
@@ -15,13 +16,12 @@ class HomeAssistant:
         self.notes = []
         self.load_members()
         self.communicator = CommunicationHandler(blind, deaf, dumb)
+        self.camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
     def start(self):
-        # start onboard webcam
-        video_capture = cv2.VideoCapture(0, cv2.CAP_DSHOW)
         while True:
             # capture next frame and detect eventual face/s
-            _, frame = video_capture.read()
+            _, frame = self.camera.read()
             # frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
             if self.detect_presence(frame):
                 # attempt recognition
@@ -29,8 +29,8 @@ class HomeAssistant:
                 if member is None:
                     self.non_member_interaction(frame)
                 else:
-                    self.member_interaction(frame, member)
-                    self.save_frame(frame, member)
+                    self.member_interaction(member)
+                    self.save_frame(frame, member)  # saves initial detection frame
 
     def detect_presence(self, frame):
         # load and instantiate haar cascade classifier
@@ -52,9 +52,8 @@ class HomeAssistant:
                     return member
         self.communicator.say(f"Ciao, non ti riconosco. Chi sei?")
         answer = self.communicator.listen().split()
-
-        members = [self.search_member_named(name) for name in answer if self.search_member_named(name) != None]
-        if len(members)>0:
+        members = [self.search_member_named(name) for name in answer if self.search_member_named(name) is not None]
+        if len(members) > 0:
             return members[0]
 
     def register_member(self, frame):
@@ -69,21 +68,23 @@ class HomeAssistant:
         self.store_members()
         self.communicator.say("Registrazione completata")
 
-    def is_member_still_here(self, frame, member):
+    def is_member_still_here(self, member):
+        _, frame = self.camera.read()
         return self.detect_presence(frame) and self.recognize_member(frame) == member
 
     '''Interactions'''
+
     def non_member_interaction(self, frame):
         self.communicator.say("Sembra che tu non faccia parte di questo Clan, vuoi registrarti?")
         answer = self.communicator.listen()
         if "sì" in answer.split():
             self.register_member(frame)
 
-    def member_interaction(self, frame, member):
+    def member_interaction(self, member):
         while True:
             self.communicator.say(f"Ciao, {member.name[0].capitalize() + member.name[1:]}")
-            if not self.is_member_still_here(frame, member):
-                break
+            if not self.is_member_still_here(member):
+                return False
             notes = self.get_notes_to(member)
             if len(notes) == 0:
                 self.communicator.say("Non ci sono note per te")
@@ -95,23 +96,27 @@ class HomeAssistant:
             self.communicator.say(f"Cosa posso fare per te, {member.name[0].capitalize() + member.name[1:]}?")
             answer = self.communicator.listen()
             action = self.get_most_probable_action(answer)
-            #recipent = self.get_most_probable_recipent(answer)
-            #if recipent
+            # recipent = self.get_most_probable_recipent(answer)
+            # if recipent
             self.communicator.say(f"Confermi l'azione {action}?")
             answer = self.communicator.listen()
             if "sì" in answer.split():
-                if action == "lascia":
+                if action == "esci":
+                    return True
+                elif action == "lascia":
                     self.leave_note_interaction(member)
                 else:
                     self.note_interaction(action, member)
+
     def leave_note_interaction(self, member):
         # note in breadcast
         self.communicator.say("Per chi è la nota? ")
         to_who = self.communicator.listen()
-        if len([word for word in to_who.split() if word in ["tutti", "tutto", "altri"]]) >0 :
+        if len([word for word in to_who.split() if word in ["tutti", "tutto", "altri"]]) > 0:
             recipients = [recipient for recipient in self.members if recipient != member]
         else:
-            recipients = [self.search_member_named(name) for name in to_who.split() if type(self.search_member_named(to_who)) == type(member)]
+            recipients = [self.search_member_named(name) for name in to_who.split() if
+                          type(self.search_member_named(to_who)) == type(member)]
         if len(recipients) == 0:
             self.communicator.say(f"Mi dispiace non ho trovato nessun membro che corrisponde alla richiesta")
         else:
@@ -143,8 +148,10 @@ class HomeAssistant:
                 self.communicator.say(f"Puoi darmi dei dattagli sul contenuto della nota? \n")
                 words = self.communicator.listen()
                 most_prob_note = self.get_most_probable_note(notes_to_who, words.split())
-                if mode == "modifica": self.communicator.say(f"Vuoi modificale la seguente nota? \"{most_prob_note.content}\"")
-                else: self.communicator.say(f"Vuoi eliminare la seguente nota? \"{most_prob_note.content}\"")
+                if mode == "modifica":
+                    self.communicator.say(f"Vuoi modificale la seguente nota? \"{most_prob_note.content}\"")
+                else:
+                    self.communicator.say(f"Vuoi eliminare la seguente nota? \"{most_prob_note.content}\"")
                 answer = self.communicator.listen()
                 if "sì" in answer.split():
                     if mode == "modifica":
@@ -157,18 +164,24 @@ class HomeAssistant:
             self.communicator.say(f"Nota da {note.sender.name}:\n{note.content}")
             self.remove_note(note)
 
-
     def get_most_probable_action(self, text):
         # hot words
         # grammatica con diverse alternativa per il verbo con sinonimi, e poi l'ogetto con sinonimi.
         # per ogni azione definire sin verbi e obj
         words = text.split()
-        prob = {"modifica": len([w for w in words if w in ["modifica", "modificare","cambia", "cambiare"]]) / len(words),
-                "rimuovi": len([w for w in words if w in ["rimuovere", "rimuovi", "cancella", "cancellare", "elimina", "eliminare"]]) / len(words),
-                "lascia": len([w for w in words if w in ["nuova", "lasciare", "dire", "riferire"]]) / len(words)}
+        prob = {
+            "modifica": len([w for w in words if w in ["modifica", "modificare", "cambia", "cambiare"]]) / len(words),
+            "rimuovi": len([w for w in words if
+                            w in ["rimuovere", "rimuovi", "cancella", "cancellare", "elimina", "eliminare"]]) / len(
+                words),
+            "lascia": len([w for w in words if w in ["nuova", "lasciare", "dire", "riferire"]]) / len(words),
+            "esci": len([w for w in words if
+                         w in ["stop", "termina", "esci", "abbandona", "smetti", "spegni", "chiudi", "esci"]]) / len(
+                words)}
         return max(prob, key=lambda key: prob[key])
 
     '''Members'''
+
     def search_member_named(self, name):
         for member in self.members:
             if member.name == name:
@@ -176,6 +189,7 @@ class HomeAssistant:
         return None
 
     '''Notes'''
+
     def add_note(self, sender, receipient, content):
         newNote = Note(sender, receipient, content)
         self.notes.append(newNote)
@@ -234,6 +248,7 @@ class HomeAssistant:
         return max_note
 
     '''Persistance'''
+
     def store_members(self):
         members_dict = {}
         for member in self.members:
