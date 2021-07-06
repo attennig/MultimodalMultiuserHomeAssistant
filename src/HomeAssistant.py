@@ -36,7 +36,7 @@ class HomeAssistant:
                 else:
                     self.member_interaction(member)
                     self.save_frame(frame, member)  # saves initial detection frame
-                sleep(5)  # avoids performing new interactions immediately after terminating one
+                sleep(60)  # avoids performing new interactions immediately after terminating one
 
     def detect_presence(self, frame):
         # convert input frame to grayscale
@@ -53,7 +53,7 @@ class HomeAssistant:
             for member in self.members:
                 for picture in member.pictures:
                     matches = face_recognition.compare_faces([picture], encoding)
-                    if True in matches:
+                    if any(matches):
                         return member
         self.communicator.say(f"Ciao, non ti riconosco. Chi sei?")
         answer = self.communicator.listen().split()
@@ -87,8 +87,10 @@ class HomeAssistant:
             self.register_member(frame)
 
     def member_interaction(self, member):
+        said_hi = False
         while True:
-            self.communicator.say(f"Ciao, {member.name[0].capitalize() + member.name[1:]}")
+            if not said_hi:
+                self.communicator.say(f"Ciao, {member.name[0].capitalize() + member.name[1:]}")
             if not self.is_member_still_here(member):
                 return False
             notes = self.get_notes_to(member)
@@ -99,9 +101,12 @@ class HomeAssistant:
                 answer = self.communicator.listen()
                 if "sì" in answer.split():
                     self.tell_notes(notes)
+            said_hi = True
             self.communicator.say(f"Cosa posso fare per te, {member.name[0].capitalize() + member.name[1:]}?")
             answer = self.communicator.listen()
             action = self.get_most_probable_action(answer)
+            if action is None:
+                continue
             # recipent = self.get_most_probable_recipent(answer)
             # if recipent
             self.communicator.say(f"Confermi l'azione {action}?")
@@ -109,7 +114,7 @@ class HomeAssistant:
             if "sì" in answer.split():
                 if action == "esci":
                     return True
-                elif action == "lascia":
+                elif action == "nuova nota":
                     self.leave_note_interaction(member)
                 else:
                     self.note_interaction(action, member)
@@ -126,9 +131,10 @@ class HomeAssistant:
         if len(recipients) == 0:
             self.communicator.say(f"Mi dispiace non ho trovato nessun membro che corrisponde alla richiesta")
         else:
-            self.communicator.say(f"Cosa vuoi dire a {[recipient.name for recipient in recipients].split()}?")
+            self.communicator.say(f"Cosa vuoi dire a {recipients}?")
             content = self.communicator.listen()
-            for recipient in recipients: self.add_note(member, recipient, content)
+            for recipient in recipients:
+                self.add_note(member, recipient, content)
 
     def note_interaction(self, mode, member):
         assert mode == "modifica" or mode == "rimuovi"
@@ -180,11 +186,13 @@ class HomeAssistant:
             "rimuovi": len([w for w in words if
                             w in ["rimuovere", "rimuovi", "cancella", "cancellare", "elimina", "eliminare"]]) / len(
                 words),
-            "lascia": len([w for w in words if w in ["nuova", "lasciare", "dire", "riferire"]]) / len(words),
-            "esci": len([w for w in words if
-                         w in ["stop", "termina", "esci", "abbandona", "smetti", "spegni", "chiudi", "uscire", "chiudere", "abbandonare"]]) / len(
+            "nuova nota": len([w for w in words if w in ["nuova", "lasciare", "dire", "riferire", "lascia"]]) / len(
+                words),
+            "termina": len([w for w in words if
+                            w in ["stop", "termina", "esci", "abbandona", "smetti", "spegni", "chiudi", "uscire",
+                                  "chiudere", "abbandonare"]]) / len(
                 words)}
-        return max(prob, key=lambda key: prob[key])
+        return max(prob, key=lambda key: prob[key]) if max(prob) != 0 else None
 
     '''Members'''
 
