@@ -25,7 +25,6 @@ class HomeAssistant:
         while True:
             # capture next frame and detect eventual face/s
             _, frame = self.camera.read()
-            # frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
             if self.detect_presence(frame):
                 # attempt recognition
                 member = self.recognize_member(frame)
@@ -36,7 +35,7 @@ class HomeAssistant:
                 else:
                     self.member_interaction(member)
                     self.save_frame(frame, member)  # saves initial detection frame
-                sleep(60)  # avoids performing new interactions immediately after terminating one
+                sleep(30)  # avoids performing new interactions immediately after terminating one
 
     def detect_presence(self, frame):
         # convert input frame to grayscale
@@ -53,7 +52,6 @@ class HomeAssistant:
             for member in self.members:
                 for picture in member.pictures:
                     matches = face_recognition.compare_faces([picture], encoding)
-                    print(type(matches))
                     if matches:
                         return member
         self.communicator.say(f"Ciao, non ti riconosco. Chi sei?")
