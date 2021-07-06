@@ -53,7 +53,8 @@ class HomeAssistant:
             for member in self.members:
                 for picture in member.pictures:
                     matches = face_recognition.compare_faces([picture], encoding)
-                    if any(matches):
+                    print(type(matches))
+                    if matches:
                         return member
         self.communicator.say(f"Ciao, non ti riconosco. Chi sei?")
         answer = self.communicator.listen().split()
@@ -190,9 +191,9 @@ class HomeAssistant:
                 words),
             "termina": len([w for w in words if
                             w in ["stop", "termina", "esci", "abbandona", "smetti", "spegni", "chiudi", "uscire",
-                                  "chiudere", "abbandonare"]]) / len(
+                                  "chiudere", "abbandonare", "nulla", "niente"]]) / len(
                 words)}
-        return max(prob, key=lambda key: prob[key]) if max(prob) != 0 else None
+        return max(prob, key=lambda key: prob[key]) if max(prob.values()) != 0 else None
 
     '''Members'''
 
