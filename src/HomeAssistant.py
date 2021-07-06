@@ -111,7 +111,7 @@ class HomeAssistant:
             self.communicator.say(f"Confermi l'azione {action}?")
             answer = self.communicator.listen()
             if "sì" in answer.split():
-                if action == "esci":
+                if action == "termina":
                     return True
                 elif action == "nuova nota":
                     self.leave_note_interaction(member)
@@ -134,6 +134,7 @@ class HomeAssistant:
             content = self.communicator.listen()
             for recipient in recipients:
                 self.add_note(member, recipient, content)
+
 
     def note_interaction(self, mode, member):
         assert mode == "modifica" or mode == "rimuovi"
@@ -206,6 +207,7 @@ class HomeAssistant:
     def add_note(self, sender, receipient, content):
         newNote = Note(sender, receipient, content)
         self.notes.append(newNote)
+        print(f"# notes: {len(self.notes)}")
         self.store_notes()
 
     def remove_note(self, note):
@@ -278,21 +280,27 @@ class HomeAssistant:
     def store_notes(self):
         notes_dict = {}
         for note in self.notes:
-            if note.sender.name in notes_dict.keys():
+            print(notes_dict.keys())
+            if note.recipient.name in notes_dict.keys():
                 notes_dict[note.recipient.name] += [{'sender': note.sender.name, 'content': note.content}]
+                print(f"{note.sender.name} ha già note")
             else:
                 notes_dict[note.recipient.name] = [{'sender': note.sender.name, 'content': note.content}]
-
+                print(f"{note.sender.name} non ha note")
+        print(notes_dict)
         pickle.dump(notes_dict, open(os.path.join("..", "data", "notes.pkl"), "wb"))
+        print(f"stored {len(self.notes)} notes")
 
     def load_notes(self):
         if os.path.getsize(os.path.join("..", "data", "notes.pkl")) > 0:
             notes_dict = pickle.load(open(os.path.join("..", "data", "notes.pkl"), "rb"))
+            print(notes_dict)
             for member in self.members:
                 if member.name in notes_dict.keys():
                     notes_to_member = notes_dict[member.name]
                     for note in notes_to_member:
                         self.notes += [Note(self.search_member_named(note['sender']), member, note['content'])]
+        print(f"load {len(self.notes)} notes")
 
     def save_frame(self, frame, member):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
