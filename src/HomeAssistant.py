@@ -21,7 +21,6 @@ class HomeAssistant:
 
     def start(self):
         while True:
-            delta = 0
             # capture next frame and detect eventual face/s
             _, frame = self.camera.read()
             # frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
