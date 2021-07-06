@@ -2,6 +2,7 @@ import sys
 
 import pyttsx3
 import speech_recognition as sr
+from pytimedinput import timedInput
 
 
 class CommunicationHandler:
@@ -21,7 +22,7 @@ class CommunicationHandler:
                                'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_IT-IT_ELSA_11.0')
 
         self.engine = 0
-        self.possible_engines = ["Google"]
+        self.possible_engines = ["Google", "Sphinx"]
 
     def say(self, text):
         if self.VIDEO_OUT:
@@ -31,15 +32,12 @@ class CommunicationHandler:
             self.voice.runAndWait()
 
     def listen(self):
-
         if self.AUDIO_IN:
-            tentative = 0
-            while tentative < 3:
-                tentative += 1
+            attempt = 0
+            while attempt < 3:
+                attempt += 1
                 with self.mic as source:
-
                     audio = self.ear.listen(source)
-
                     try:
                         if self.possible_engines[self.engine] == "Sphinx":
                             # recognize speech using Sphinx
@@ -54,5 +52,4 @@ class CommunicationHandler:
                         self.say("Non ho capito, potresti ripetere?")
                     except sr.RequestError as e:
                         print(f"{self.possible_engines[self.engine]} request error; {e}")
-
-        return input("Scrivi qui ").lower()
+        return timedInput("Scrivi qui ", 10)[0].lower()
