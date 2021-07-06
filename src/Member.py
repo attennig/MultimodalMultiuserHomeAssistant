@@ -3,6 +3,9 @@ class Member:
         self.name = name
         self.pictures = pictures
 
+    def __repr__(self):
+        return self.name
+
     ''' not used
     def get_name(self):
         return self.name
