@@ -18,6 +18,8 @@ class HomeAssistant:
         self.load_members()
         self.communicator = CommunicationHandler(blind, deaf, dumb)
         self.camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        self.detector = cv2.CascadeClassifier(
+            os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
 
     def start(self):
         while True:
@@ -37,13 +39,11 @@ class HomeAssistant:
                 sleep(5)  # avoids performing new interactions immediately after terminating one
 
     def detect_presence(self, frame):
-        # load and instantiate haar cascade classifier
-        face_cascade = cv2.CascadeClassifier(os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
         # convert input frame to grayscale
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         gray = cv2.equalizeHist(gray)
         # detect faces
-        faces = face_cascade.detectMultiScale(gray, minNeighbors=6, minSize=(60, 60), flags=cv2.CASCADE_SCALE_IMAGE)
+        faces = self.detector.detectMultiScale(gray, minNeighbors=6, minSize=(60, 60), flags=cv2.CASCADE_SCALE_IMAGE)
         return faces is not None
 
     def recognize_member(self, frame):
@@ -61,7 +61,6 @@ class HomeAssistant:
             return members[0]
 
     def register_member(self, frame):
-        # prendere più di un img per utente
         self.communicator.say("Registrazione\n Come ti chiami?")
         name = self.communicator.listen()
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -293,3 +292,4 @@ class HomeAssistant:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         boxes = face_recognition.face_locations(rgb, model="cnn")
         member.pictures.append(face_recognition.face_encodings(rgb, boxes))
+        self.store_members()
