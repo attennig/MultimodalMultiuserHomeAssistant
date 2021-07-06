@@ -181,7 +181,7 @@ class HomeAssistant:
                 words),
             "lascia": len([w for w in words if w in ["nuova", "lasciare", "dire", "riferire"]]) / len(words),
             "esci": len([w for w in words if
-                         w in ["stop", "termina", "esci", "abbandona", "smetti", "spegni", "chiudi", "esci"]]) / len(
+                         w in ["stop", "termina", "esci", "abbandona", "smetti", "spegni", "chiudi", "uscire", "chiudere", "abbandonare"]]) / len(
                 words)}
         return max(prob, key=lambda key: prob[key])
 
