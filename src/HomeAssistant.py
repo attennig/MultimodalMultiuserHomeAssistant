@@ -25,20 +25,16 @@ class HomeAssistant:
         while True:
             # capture next frame and detect eventual face/s
             _, frame = self.camera.read()
-            cv2.imshow("", frame)
-            cv2.waitKey(41)
             if self.detect_presence(frame):
                 # attempt recognition
                 member = self.recognize_member(frame)
                 if member is None:
                     _, frame = self.camera.read()
-                    cv2.imshow("", frame)
-                    cv2.waitKey(41)
-                    if self.is_member_still_here(frame):
+                    if self.is_member_still_here():
                         self.non_member_interaction(frame)
                 else:
-                    self.member_interaction(member)
-                    self.save_frame(frame, member)  # saves initial detection frame
+                    if self.member_interaction(member):
+                        self.save_frame(frame, member)  # saves initial detection frame
                 print("pausing")
                 sleep(10)  # avoids performing new interactions immediately after terminating one
 
@@ -77,10 +73,8 @@ class HomeAssistant:
         self.store_members()
         self.communicator.say("Registrazione completata")
 
-    def is_member_still_here(self, member):
+    def is_member_still_here(self):
         _, frame = self.camera.read()
-        cv2.imshow("", frame)
-        cv2.waitKey(41)
         return self.detect_presence(frame)  # and self.recognize_member(frame) == member
 
     '''Interactions'''
@@ -97,7 +91,7 @@ class HomeAssistant:
         said_hi = False
         while True:
             if not said_hi:
-                if not self.is_member_still_here(member):
+                if not self.is_member_still_here():
                     return False
                 self.communicator.say(f"Ciao, {member.name[0].capitalize() + member.name[1:]}")
                 notes = self.get_notes_to(member)
