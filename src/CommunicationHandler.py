@@ -14,12 +14,11 @@ class CommunicationHandler:
         if not ((self.AUDIO_IN or self.VIDEO_IN) and (self.AUDIO_OUT or self.VIDEO_OUT)):
             print("Questa modalità non è supportata")
             sys.exit(-5)
-
+        synthesizer = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_IT-IT_ELSA_11.0'
         self.voice = pyttsx3.init()
         self.mic = sr.Microphone()
         self.ear = sr.Recognizer()
-        self.voice.setProperty('voice',
-                               'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_IT-IT_ELSA_11.0')
+        self.voice.setProperty('voice',synthesizer)
 
         self.engine = 0
         self.possible_engines = ["Google", "Sphinx"]
@@ -53,3 +52,4 @@ class CommunicationHandler:
                     except sr.RequestError as e:
                         print(f"{self.possible_engines[self.engine]} request error; {e}")
         return timedInput("Scrivi qui ", 10)[0].lower()
+
