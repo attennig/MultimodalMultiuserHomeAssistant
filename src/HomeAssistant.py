@@ -41,8 +41,6 @@ class HomeAssistant:
                     self.save_frame(frame, member)  # saves initial detection frame
                 print("pausing")
                 sleep(10)  # avoids performing new interactions immediately after terminating one
-        video_capture.release()
-        cv2.destroyAllWindows()
 
     def detect_presence(self, frame):
         # convert input frame to grayscale
@@ -116,14 +114,12 @@ class HomeAssistant:
             action = self.get_most_probable_action(answer)
             if action is None:
                 continue
-            # recipent = self.get_most_probable_recipent(answer)
-            # if recipent
+            if action is "termina":
+                return True
             self.communicator.say(f"Confermi l'azione {action}?")
             answer = self.communicator.listen()
             if "sì" in answer.split():
-                if action == "termina":
-                    return True
-                elif action == "nuova nota":
+                if action == "nuova nota":
                     self.leave_note_interaction(member)
                 else:
                     self.note_interaction(action, member)
@@ -136,7 +132,7 @@ class HomeAssistant:
             recipients = [recipient for recipient in self.members if recipient != member]
         else:
             recipients = [self.search_member_named(name) for name in to_who.split() if
-                          type(self.search_member_named(to_who)) == type(member)]
+                          self.search_member_named(name) is not None]
         if len(recipients) == 0:
             self.communicator.say(f"Mi dispiace non ho trovato nessun membro che corrisponde alla richiesta")
         else:
@@ -144,7 +140,6 @@ class HomeAssistant:
             content = self.communicator.listen()
             for recipient in recipients:
                 self.add_note(member, recipient, content)
-
 
     def note_interaction(self, mode, member):
         assert mode == "modifica" or mode == "rimuovi"
@@ -191,6 +186,8 @@ class HomeAssistant:
         # grammatica con diverse alternativa per il verbo con sinonimi, e poi l'ogetto con sinonimi.
         # per ogni azione definire sin verbi e obj
         words = text.split()
+        if not words:
+            return "termina"
         prob = {
             "modifica": len([w for w in words if w in ["modifica", "modificare", "cambia", "cambiare"]]) / len(words),
             "rimuovi": len([w for w in words if
