@@ -25,17 +25,24 @@ class HomeAssistant:
         while True:
             # capture next frame and detect eventual face/s
             _, frame = self.camera.read()
+            cv2.imshow("", frame)
+            cv2.waitKey(41)
             if self.detect_presence(frame):
                 # attempt recognition
                 member = self.recognize_member(frame)
                 if member is None:
                     _, frame = self.camera.read()
+                    cv2.imshow("", frame)
+                    cv2.waitKey(41)
                     if self.is_member_still_here(frame):
                         self.non_member_interaction(frame)
                 else:
                     self.member_interaction(member)
                     self.save_frame(frame, member)  # saves initial detection frame
-                sleep(30)  # avoids performing new interactions immediately after terminating one
+                print("pausing")
+                sleep(10)  # avoids performing new interactions immediately after terminating one
+        video_capture.release()
+        cv2.destroyAllWindows()
 
     def detect_presence(self, frame):
         # convert input frame to grayscale
@@ -43,7 +50,7 @@ class HomeAssistant:
         gray = cv2.equalizeHist(gray)
         # detect faces
         faces = self.detector.detectMultiScale(gray, minNeighbors=6, minSize=(60, 60), flags=cv2.CASCADE_SCALE_IMAGE)
-        return faces is not None
+        return bool(list(faces))
 
     def recognize_member(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -64,6 +71,7 @@ class HomeAssistant:
         self.communicator.say("Registrazione\n Come ti chiami?")
         name = self.communicator.listen()
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        self.communicator.say("Registrazione in corso, attendere")
         boxes = face_recognition.face_locations(rgb, model="cnn")
         pictures = face_recognition.face_encodings(rgb, boxes)
         newMember = Member(name.lower(), pictures)
@@ -73,7 +81,9 @@ class HomeAssistant:
 
     def is_member_still_here(self, member):
         _, frame = self.camera.read()
-        return self.detect_presence(frame) and self.recognize_member(frame) == member
+        cv2.imshow("", frame)
+        cv2.waitKey(41)
+        return self.detect_presence(frame)  # and self.recognize_member(frame) == member
 
     '''Interactions'''
 
@@ -89,9 +99,9 @@ class HomeAssistant:
         said_hi = False
         while True:
             if not said_hi:
-                self.communicator.say(f"Ciao, {member.name[0].capitalize() + member.name[1:]}")
                 if not self.is_member_still_here(member):
                     return False
+                self.communicator.say(f"Ciao, {member.name[0].capitalize() + member.name[1:]}")
                 notes = self.get_notes_to(member)
                 if len(notes) == 0:
                     self.communicator.say("Non ci sono note per te")
@@ -186,7 +196,8 @@ class HomeAssistant:
             "rimuovi": len([w for w in words if
                             w in ["rimuovere", "rimuovi", "cancella", "cancellare", "elimina", "eliminare"]]) / len(
                 words),
-            "nuova nota": len([w for w in words if w in ["nuova", "lasciare", "dire", "riferire", "lascia"]]) / len(
+            "nuova nota": len(
+                [w for w in words if w in ["nuova", "lasciare", "dire", "riferire", "lascia", "lascio"]]) / len(
                 words),
             "termina": len([w for w in words if
                             w in ["stop", "termina", "esci", "abbandona", "smetti", "spegni", "chiudi", "uscire",
