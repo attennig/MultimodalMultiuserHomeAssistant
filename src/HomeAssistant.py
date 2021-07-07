@@ -11,12 +11,12 @@ from Note import Note
 
 
 class HomeAssistant:
-    def __init__(self, blind=False, deaf=False, dumb=False):
+    def __init__(self, blind=False, deaf=False, mute=False):
         # load data from db
         self.members = []
         self.notes = []
         self.load_members()
-        self.communicator = CommunicationHandler(blind, deaf, dumb)
+        self.communicator = CommunicationHandler(blind, deaf, mute)
         self.camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
         self.detector = cv2.CascadeClassifier(
             os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))

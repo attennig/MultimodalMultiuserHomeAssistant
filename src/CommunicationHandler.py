@@ -6,10 +6,10 @@ from pytimedinput import timedInput
 
 
 class CommunicationHandler:
-    def __init__(self, blind, deaf, dumb):
-        self.AUDIO_IN = not dumb
+    def __init__(self, blind, deaf, mute):
+        self.AUDIO_IN = not mute
         self.AUDIO_OUT = not deaf
-        self.VIDEO_IN = not blind and (deaf or dumb)
+        self.VIDEO_IN = True
         self.VIDEO_OUT = not blind
         if not ((self.AUDIO_IN or self.VIDEO_IN) and (self.AUDIO_OUT or self.VIDEO_OUT)):
             print("Questa modalità non è supportata")
